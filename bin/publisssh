@@ -1,0 +1,41 @@
+#!/usr/bin/env coffee
+
+optimist = require 'optimist'
+path = require 'path'
+Publisher = require '../lib/publisher'
+
+cwd = process.cwd()
+
+options = optimist.usage('''
+  Usage:
+    publisssh some/source some-bucket/some/destination
+''').options({
+  force: alias: 'f', description: 'Replace existing files'
+  cleanup: alias: 'c', description: 'Delete remote files that don\'t exist locally'
+  key: alias: 'k', description: 'AWS access key ID'
+  secret: alias: 's', description: 'AWS secret access key'
+  simulate: alias: 'x', description: 'Don\'t change anything remotely.'
+  help: alias: 'h', description: 'Show options'
+}).argv
+
+if options.help
+  optimist.showHelp()
+  process.exit 0
+
+try
+  config = require path.resolve cwd, 'publisssh-config'
+  options[option] = value for own option, value of config
+
+{_: [local, remote]} = options
+
+local ?= options.local
+local ?= '.'
+local = path.resolve cwd, local
+
+remote ?= options.remote
+remote ?= path.basename cwd
+[bucket, prefix...] = remote.split path.sep
+prefix = prefix.join path.sep
+
+publisher = new Publisher {local, bucket, prefix, options}
+publisher.publish()
