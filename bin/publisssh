@@ -10,14 +10,15 @@ options = optimist.usage('''
   Usage:
     publisssh some/source some-bucket/some/destination -fr
 ''').options({
-  f: alias: 'force', description: 'Replace newer existing files', default: false
-  r: alias: 'remove', description: 'Delete remote files that don\'t exist locally', default: false
-  d: alias: 'dry-run', description: 'Don\'t change anything remotely.', default: false
+  f: alias: 'force', description: 'Replace newer existing files'
+  r: alias: 'remove', description: 'Delete remote files that don\'t exist locally'
+  d: alias: 'dry-run', description: 'Don\'t change anything remotely.'
   k: alias: 'key', description: 'AWS access key ID'
   s: alias: 'secret', description: 'AWS secret access key'
   c: alias: 'config', description: 'Configuration file'
   h: alias: 'help', description: 'Show options'
   v: alias: 'version', description: 'Show the version number'
+  i: alias: 'ignore', descriptions: 'Ignore files matching this expression'
 }).argv
 
 if options.help
@@ -29,12 +30,12 @@ if options.version
   console.log "#{name} v#{version}"
   process.exit 0
 
-# Unpack command line arguments
-{_: [local, remote]} = options
-
 try
   config = require path.resolve cwd, options.config || 'publisssh'
-  options[option] = value for own option, value of config
+  options[option] = value for option, value of config when not (option of options)
+
+# Unpack command line arguments
+{_: [local, remote]} = options
 
 local = path.resolve cwd, local || options.local || '.'
 remote = remote || options.remote || path.basename cwd
