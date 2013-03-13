@@ -1,11 +1,12 @@
 {
   "name": "publisssh",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "dependencies": {
     "async": "~0.2.6",
     "awssum": "~0.12.2",
     "coffee-script": "~1.4.0",
     "colors": "~0.6.0-1",
+    "mime": "~1.2.9",
     "optimist": "~0.3.5",
     "wrench": "~1.4.4"
   }

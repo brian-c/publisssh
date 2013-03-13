@@ -4,17 +4,12 @@ fs = require 'fs'
 {readdirSyncRecursive} = require 'wrench'
 awssum = require 'awssum'
 async = require 'async'
+mime = require 'mime'
 
 amazon = awssum.load 'amazon/amazon'
 {S3} = awssum.load 'amazon/s3'
 
 defaultGzips = ['.css', '.js']
-
-defaultContentTypes =
-  'default': 'text/plain'
-  '.js': 'text/javascript'
-  '.html': 'text/plain'
-  '.css': 'text/css'
 
 err = (message) ->
   console.log message.red
@@ -31,7 +26,6 @@ class Publisher
   options: null
 
   gzip: null
-  contentTypes: null
 
   s3: null
 
@@ -42,7 +36,6 @@ class Publisher
     @[property] = value for own property, value of params when property of @
 
     @gzip = @options.gzip || defaultGzips
-    @contentTypes = @options.contentTypes || defaultContentTypes
 
     @s3 ?= new S3
       accessKeyId: @options.key || process.env.AMAZON_ACCESS_KEY_ID
@@ -127,13 +120,13 @@ class Publisher
   upload: (file, callback) ->
     extension = path.extname file
 
-    content = if extension in @gzip
+    if extension in @gzip
       # TODO: GZIP
-      fs.readFileSync path.resolve @local, file
+      content = fs.readFileSync path.resolve @local, file
+      contentType = mime.lookup file
     else
-      fs.readFileSync path.resolve @local, file
-
-    contentType = @contentTypes[extension] || @contentTypes.default
+      content = fs.readFileSync path.resolve @local, file
+      contentType = mime.lookup file
 
     if @options['dry-run']
       callback()
@@ -143,7 +136,7 @@ class Publisher
         ObjectName: path.join @prefix, file
         ContentLength: content.length
         ContentType: contentType
-        ContentEncoding: if extension in @gzip then 'gzip'
+        # ContentEncoding: if extension in @gzip then 'gzip'
         Body: content
         Acl: 'public-read'
         callback
