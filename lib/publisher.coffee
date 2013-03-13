@@ -5,6 +5,7 @@ fs = require 'fs'
 awssum = require 'awssum'
 async = require 'async'
 mime = require 'mime'
+zlib = require 'zlib'
 
 amazon = awssum.load 'amazon/amazon'
 {S3} = awssum.load 'amazon/s3'
@@ -117,29 +118,31 @@ class Publisher
       files[o.Key] = new Date o.LastModified for o in objects
       callback error, files
 
+  preUpload: (file, callback) ->
+    extension = path.extname file
+    content = fs.readFileSync path.resolve @local, file
+
+    if extension in @gzip
+      zlib.gzip content, callback
+    else
+      callback null, fs.readFileSync path.resolve @local, file
+
   upload: (file, callback) ->
     extension = path.extname file
 
-    if extension in @gzip
-      # TODO: GZIP
-      content = fs.readFileSync path.resolve @local, file
-      contentType = mime.lookup file
-    else
-      content = fs.readFileSync path.resolve @local, file
-      contentType = mime.lookup file
-
-    if @options['dry-run']
-      callback()
-    else
-      @s3.PutObject
-        BucketName: @bucket
-        ObjectName: path.join @prefix, file
-        ContentLength: content.length
-        ContentType: contentType
-        # ContentEncoding: if extension in @gzip then 'gzip'
-        Body: content
-        Acl: 'public-read'
-        callback
+    @preUpload file, (error, content) =>
+      if @options['dry-run']
+        callback()
+      else
+        @s3.PutObject
+          BucketName: @bucket
+          ObjectName: path.join @prefix, file
+          ContentLength: content.length
+          ContentType: mime.lookup file
+          ContentEncoding: if extension in @gzip then 'gzip'
+          Body: content
+          Acl: 'public-read'
+          callback
 
   add: (file, callback) =>
     @progress += 1
