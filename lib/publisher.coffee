@@ -10,11 +10,19 @@ amazon = awssum.load 'amazon/amazon'
 
 defaultGzips = ['.css', '.js']
 
-DEFAULT_CONTENT_TYPE = 'text/plain'
 defaultContentTypes =
+  'default': 'text/plain'
   '.js': 'text/javascript'
   '.html': 'text/plain'
   '.css': 'text/css'
+
+err = (message) ->
+  console.log message.red
+  process.exit 1
+
+isDir = (path) ->
+  try return (fs.statSync path).isDirectory()
+  false
 
 class Publisher
   local: ''
@@ -32,6 +40,7 @@ class Publisher
 
   constructor: (params = {}) ->
     @[property] = value for own property, value of params when property of @
+
     @gzip = @options.gzip || defaultGzips
     @contentTypes = @options.contentTypes || defaultContentTypes
 
@@ -41,14 +50,24 @@ class Publisher
       region: amazon[@options.region || 'US_EAST_1']
 
   publish: ->
+    console.log """
+      Local:  #{@local}
+      Bucket: #{@bucket}
+      Prefix: #{@prefix || '(none)'}
+    """
+
+    err "Couldn't find local #{@local}" unless isDir @local
+
     cwd = process.cwd()
 
     localFiles = {}
+
     for file in readdirSyncRecursive @local
+      continue if file.match @options.ignore || null
       localFiles[file] = new Date (fs.statSync path.resolve @local, file).mtime
 
     @list (error, remoteFiles) =>
-      throw new Error "Couldn't list files in bucket #{@bucket}." if error?
+      err "Couldn't list files in bucket #{@bucket}." if error?
 
       toAdd = []
       toUpdate = []
@@ -56,9 +75,8 @@ class Publisher
       toRemove = []
 
       for file, modified of localFiles
-        remoteFile = remoteFiles[file]
-
-        if file of remoteFiles
+        continue if isDir path.resolve @local, file
+        if "#{@prefix}/#{file}" of remoteFiles
           if modified > remoteFiles[file] or @options.force
             toUpdate.push file
           else
@@ -66,8 +84,10 @@ class Publisher
         else
           toAdd.push file
 
-      if @options.cleanup then for file of remoteFiles
-        toRemove.push file unless file of localFiles
+      if @options.remove then for file of remoteFiles
+        continue if file.match @options.ignore
+        continue if fs.existsSync path.resolve @local, file[@prefix.length + 1...] # TODO: Clean up
+        toRemove.push file unless file[@prefix.length + 1...] of localFiles
 
       todo = []
       todo.push "adding #{toAdd.length}" unless toAdd.length is 0
@@ -81,8 +101,6 @@ class Publisher
       @progress = 0
       @total = ([].concat toAdd, toUpdate, toRemove).length
       errors = []
-
-      # console.log {toAdd, toUpdate, toSkip, toRemove}
 
       async.forEachSeries toAdd, @add, (error) =>
         errors.push error if error?
@@ -110,13 +128,14 @@ class Publisher
     extension = path.extname file
 
     content = if extension in @gzip
-      'TODO: GZIP'
+      # TODO: GZIP
+      fs.readFileSync path.resolve @local, file
     else
       fs.readFileSync path.resolve @local, file
 
-    contentType = @contentTypes[extension] || DEFAULT_CONTENT_TYPE
+    contentType = @contentTypes[extension] || @contentTypes.default
 
-    if @options.simulate
+    if @options['dry-run']
       callback()
     else
       @s3.PutObject
@@ -131,24 +150,24 @@ class Publisher
 
   add: (file, callback) =>
     @progress += 1
-    console.log "#{'+'.green} #{file} (#{@progress}/#{@total})"
+    console.log "#{'+'.green} #{path.resolve process.cwd(), file} (#{@progress}/#{@total})"
     @upload arguments...
 
   update: (file, callback) =>
     @progress += 1
-    console.log "#{'Δ'.green} #{file} (#{@progress}/#{@total})"
+    console.log "#{'Δ'.yellow} #{path.resolve process.cwd(), file} (#{@progress}/#{@total})"
     @upload arguments...
 
   remove: (file, callback) =>
     @progress += 1
     console.log "#{'×'.red} #{file} (#{@progress}/#{@total})"
 
-    if @options.simulate
+    if @options['dry-run']
       callback()
     else
       @s3.DeleteObject
         BucketName: @bucket
-        ObjectName: path.join @prefix, file
+        ObjectName: file
         callback
 
   onFinished: (errors) =>
@@ -157,6 +176,7 @@ class Publisher
     else
       errorLog = "publisssh-error-log.txt"
       console.error "Finished with #{errors.length} errors.".red
-      # TODO: console.error "Logging errors to #{errorLog}.".red
+      TODO: console.error "Logging errors to #{errorLog}.".red
+      fs.writeFileSync errorLog, "#{errors.join '\n'}\n"
 
 module.exports = Publisher
