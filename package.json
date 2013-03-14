@@ -1,6 +1,9 @@
 {
   "name": "publisssh",
   "version": "0.0.3",
+  "bin": {
+    "publisssh": "./bin/publisssh"
+  },
   "dependencies": {
     "async": "~0.2.6",
     "awssum": "~0.12.2",
