@@ -175,4 +175,6 @@ class Publisher
       TODO: console.error "Logging errors to #{errorLog}.".red
       fs.writeFileSync errorLog, "#{errors.join '\n'}\n"
 
+      console.log 'This was a dry run. No changes have been made remotely.' if @options['dry-run']
+
 module.exports = Publisher
