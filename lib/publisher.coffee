@@ -70,8 +70,10 @@ class Publisher
 
       for file, modified of localFiles
         continue if isDir path.resolve @local, file
-        if "#{@prefix}/#{file}" of remoteFiles
-          if modified > remoteFiles[file] or @options.force
+
+        prefixedFile = "#{@prefix}/#{file}"
+        if prefixedFile of remoteFiles
+          if (modified > remoteFiles[prefixedFile]) or @options.force
             toUpdate.push file
           else
             toSkip.push file
