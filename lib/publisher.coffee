@@ -81,7 +81,7 @@ class Publisher
           toAdd.push file
 
       if @options.remove then for file of remoteFiles
-        continue if file.match @options.ignore
+        continue if @options.ignore? and file.match @options.ignore
         continue if fs.existsSync path.resolve @local, file[@prefix.length + 1...] # TODO: Clean up
         toRemove.push file unless file[@prefix.length + 1...] of localFiles
 
@@ -112,6 +112,7 @@ class Publisher
   list: (callback) ->
     @s3.ListObjects BucketName: @bucket, Prefix: @prefix, (error, data) =>
       callback error if error?
+
       objects = data.Body.ListBucketResult.Contents
       return callback null, [] unless objects?
       objects = [objects] unless objects instanceof Array
