@@ -1,8 +1,6 @@
 #!/usr/bin/env coffee
 
 optimist = require 'optimist'
-path = require 'path'
-Publisher = require '../lib/publisher'
 
 cwd = process.cwd()
 
@@ -25,23 +23,30 @@ if options.help
   optimist.showHelp()
   process.exit 0
 
-if options.version
-  {name, version} = require '../package'
-  console.log "#{name} v#{version}"
+else if options.version
+  {version} = require '../package'
+  console.log version
   process.exit 0
 
-try
-  config = require path.resolve cwd, options.config || 'publisssh'
-  options[option] = value for option, value of config when not (option of options)
+else
+  path = require 'path'
+  Publisher = require '../lib/publisher'
 
-# Unpack command line arguments
-{_: [local, remote]} = options
+  try
+    config = require path.resolve cwd, options.config || 'publisssh'
+    options[option] = value for option, value of config when not (option of options)
 
-local = path.resolve cwd, local || options.local || '.'
-remote = remote || options.remote || path.basename cwd
-[bucketFromRemote, prefixesFromRemote...] = remote.split path.sep
-bucket = options.bucket || bucketFromRemote
-prefix = options.prefix || prefixesFromRemote.join path.sep
+  # Unpack command line arguments.
+  {_: [localFromArgs, remoteFromArgs]} = options
 
-publisher = new Publisher {local, bucket, prefix, options}
-publisher.publish()
+  local = path.resolve cwd, localFromArgs || options.local || cwd
+  remote = remoteFromArgs || options.remote || path.basename cwd
+
+  [bucketFromRemote, prefixesFromRemote...] = remote.split path.sep
+  prefixFromRemote = prefixesFromRemote.join path.sep
+
+  bucket = options.bucket || bucketFromRemote
+  prefix = options.prefix || prefixFromRemote
+
+  publisher = new Publisher {local, bucket, prefix, options}
+  publisher.publish()
