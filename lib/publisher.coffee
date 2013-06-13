@@ -2,13 +2,10 @@ require 'colors'
 path = require 'path'
 fs = require 'fs'
 {readdirSyncRecursive} = require 'wrench'
-awssum = require 'awssum'
+AWS = require 'aws-sdk'
 async = require 'async'
 mime = require 'mime'
 zlib = require 'zlib'
-
-amazon = awssum.load 'amazon/amazon'
-{S3} = awssum.load 'amazon/s3'
 
 defaultGzips = ['.css', '.js']
 
@@ -38,10 +35,10 @@ class Publisher
 
     @gzip = @options.gzip || defaultGzips
 
-    @s3 ?= new S3
+    @s3 ?= new AWS.S3
       accessKeyId: @options.key || process.env.AMAZON_ACCESS_KEY_ID
       secretAccessKey: @options.secret || process.env.AMAZON_SECRET_ACCESS_KEY
-      region: amazon[@options.region || 'US_EAST_1']
+      region: @options.region || 'us-east-1'
 
   publish: ->
     console.log """
@@ -110,10 +107,10 @@ class Publisher
             @onFinished errors
 
   list: (callback) ->
-    @s3.ListObjects BucketName: @bucket, Prefix: @prefix, (error, data) =>
+    @s3.listObjects Bucket: @bucket, Prefix: @prefix, (error, data) =>
       callback error if error?
 
-      objects = data.Body.ListBucketResult.Contents
+      objects = data.Contents
       return callback null, [] unless objects?
       objects = [objects] unless objects instanceof Array
 
@@ -137,14 +134,14 @@ class Publisher
       if @options['dry-run']
         callback()
       else
-        @s3.PutObject
-          BucketName: @bucket
-          ObjectName: path.join @prefix, file
+        @s3.putObject
+          Bucket: @bucket
+          Key: path.join @prefix, file
           ContentLength: content.length
           ContentType: mime.lookup file
-          ContentEncoding: if extension in @gzip then 'gzip'
+          ContentEncoding: if extension in @gzip then 'gzip' else ''
           Body: content
-          Acl: 'public-read'
+          ACL: 'public-read'
           callback
 
   add: (file, callback) =>
@@ -164,9 +161,9 @@ class Publisher
     if @options['dry-run']
       callback()
     else
-      @s3.DeleteObject
-        BucketName: @bucket
-        ObjectName: file
+      @s3.deleteObject
+        Bucket: @bucket
+        Key: file
         callback
 
   onFinished: (errors) =>
