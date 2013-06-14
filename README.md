@@ -5,8 +5,6 @@ Sync a directory
 publisssh ./local-dir bucket/remote-dir
 ```
 
-Older files are replaced. Replace newer ones with `--force` or `-f`.
-
 Remove remote orphans with `--remove` or `-r`.
 
 Simulate changes with `--dry-run` or `-d`.
@@ -28,5 +26,4 @@ module.exports =
   prefix: 'demo'
   key: process.env.ALT_AMAZON_ACCESS_KEY_ID
   secret: process.env.ALT_AMAZON_SECRET_ACCESS_KEY
-  cleanup: true
 ```

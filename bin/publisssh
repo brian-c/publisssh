@@ -8,7 +8,6 @@ options = optimist.usage('''
   Usage:
     publisssh some/source some-bucket/some/destination -fr
 ''').options({
-  f: alias: 'force', description: 'Replace newer existing files'
   r: alias: 'remove', description: 'Delete remote files that don\'t exist locally'
   d: alias: 'dry-run', description: 'Don\'t change anything remotely.'
   k: alias: 'key', description: 'AWS access key ID'

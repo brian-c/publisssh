@@ -1,17 +1,16 @@
 require 'colors'
 path = require 'path'
 fs = require 'fs'
-{readdirSyncRecursive} = require 'wrench'
+wrench = require 'wrench'
 AWS = require 'aws-sdk'
 async = require 'async'
+crypto = require 'crypto'
 mime = require 'mime'
 zlib = require 'zlib'
 
-defaultGzips = ['.css', '.js']
+CWD = process.cwd()
 
-err = (message) ->
-  console.log message.red
-  process.exit 1
+ERROR_LOG = "publisssh-error-log.txt"
 
 isDir = (path) ->
   try return (fs.statSync path).isDirectory()
@@ -23,7 +22,14 @@ class Publisher
   prefix: ''
   options: null
 
-  gzip: null
+  gzip: [
+    /\.css$/
+    /\.js$/
+  ]
+
+  dontCache: [
+    /^index\.html$/
+  ]
 
   s3: null
 
@@ -33,130 +39,145 @@ class Publisher
   constructor: (params = {}) ->
     @[property] = value for own property, value of params when property of @
 
-    @gzip = @options.gzip || defaultGzips
+    AWS.config.update
+      accessKeyId: @options.key
+      secretAccessKey: @options.secret
 
-    @s3 ?= new AWS.S3
-      accessKeyId: @options.key || process.env.AMAZON_ACCESS_KEY_ID
-      secretAccessKey: @options.secret || process.env.AMAZON_SECRET_ACCESS_KEY
-      region: @options.region || 'us-east-1'
+    @s3 = new AWS.S3
+
+  log: (message...) ->
+    console.log message...
+
+  die: (error) ->
+    console.error error.red || error
+    process.exit 1
 
   publish: ->
-    console.log """
-      Local:  #{@local}
+    @die "Couldn't find local directory: #{path.relative CWD, @local}" unless isDir @local
+
+    @log """
+      Local:  #{path.relative CWD, @local}
       Bucket: #{@bucket}
       Prefix: #{@prefix || '(none)'}
     """
 
-    err "Couldn't find local #{@local}" unless isDir @local
+    @getFiles()
 
-    cwd = process.cwd()
+  getFiles: ->
+    localFiles = wrench.readdirSyncRecursive @local
 
-    localFiles = {}
+    @s3.listObjects
+      Bucket: @bucket
+      Prefix: @prefix
+      (error, {IsTruncated, Contents: objects}) =>
+        @die error if error?
 
-    for file in readdirSyncRecursive @local
-      continue if file.match @options.ignore || null
-      localFiles[file] = new Date (fs.statSync path.resolve @local, file).mtime
+        # TODO: Make another request with "marker" set to the last file.
+        @log 'Warning: List of remote files was truncated.'.yellow if IsTruncated
 
-    @list (error, remoteFiles) =>
-      err "Couldn't list files in bucket #{@bucket}." if error?
+        remoteFiles = {}
+        for object in objects
+          remoteFiles[object.Key] = object.ETag[1...-1]
 
-      toAdd = []
-      toUpdate = []
-      toSkip = []
-      toRemove = []
+        @separateFiles localFiles, remoteFiles
 
-      for file, modified of localFiles
-        continue if isDir path.resolve @local, file
+  separateFiles: (localFiles, remoteFiles) ->
+    toAdd = []
+    toUpdate = []
+    toSkip = []
+    toRemove = []
 
-        prefixedFile = "#{@prefix}/#{file}"
-        if prefixedFile of remoteFiles
-          if (modified > remoteFiles[prefixedFile]) or @options.force
-            toUpdate.push file
-          else
-            toSkip.push file
+    for localFile in localFiles
+      prefixed = path.join (@prefix || ''), localFile
+      localFile = path.resolve @local, localFile
+
+      continue if isDir localFile
+
+      if prefixed of remoteFiles
+        md5 = crypto.createHash('md5').update(fs.readFileSync localFile).digest 'hex'
+        if md5 is remoteFiles[prefixed]
+          toSkip.push localFile
         else
-          toAdd.push file
+          console.log 'Up', prefixed
+          toUpdate.push localFile
+      else
+        console.log 'Add', prefixed
+        toAdd.push localFile
 
-      if @options.remove then for file of remoteFiles
-        continue if @options.ignore? and file.match @options.ignore
-        continue if fs.existsSync path.resolve @local, file[@prefix.length + 1...] # TODO: Clean up
-        toRemove.push file unless file[@prefix.length + 1...] of localFiles
+    if @options.remove
+      for remoteFile of remoteFiles
+        continue if @options.ignore?.test file
+        toRemove.push remoteFile unless file[(@prefix.length + 1)...] in localFiles
 
-      todo = []
-      todo.push "adding #{toAdd.length}" unless toAdd.length is 0
-      todo.push "updating #{toUpdate.length}" unless toUpdate.length is 0
-      todo.push "skipping #{toSkip.length}" unless toSkip.length is 0
-      todo.push "removing #{toRemove.length}" unless toRemove.length is 0
-      todo = "#{todo.join ', '}."
-      todo = todo.charAt(0).toUpperCase() + todo[1...]
-      console.log todo
+    thePlan = []
+    thePlan.push "adding #{toAdd.length}" unless toAdd.length is 0
+    thePlan.push "updating #{toUpdate.length}" unless toUpdate.length is 0
+    thePlan.push "skipping #{toSkip.length}" unless toSkip.length is 0
+    thePlan.push "removing #{toRemove.length}" unless toRemove.length is 0
+    thePlan = "#{thePlan.join ', '}."
+    thePlan = thePlan.charAt(0).toUpperCase() + thePlan[1...]
+    @log thePlan
 
-      @progress = 0
-      @total = ([].concat toAdd, toUpdate, toRemove).length
-      errors = []
+    setTimeout (=> @applyChanges toAdd, toUpdate, toSkip, toRemove), 1000
 
-      async.forEachSeries toAdd, @add, (error) =>
+  applyChanges: (toAdd, toUpdate, toSkip, toRemove) ->
+    @progress = 0
+    @total = ([].concat toAdd, toUpdate, toRemove).length
+
+    errors = []
+
+    async.forEachSeries toAdd, @add, (error) =>
+      errors.push error if error?
+
+      async.forEachSeries toUpdate, @update, (error) =>
         errors.push error if error?
 
-        async.forEachSeries toUpdate, @update, (error) =>
+        async.forEachSeries toRemove, @remove, (error) =>
           errors.push error if error?
 
-          async.forEachSeries toRemove, @remove, (error) =>
-            errors.push error if error?
+          @finishUp errors
 
-            @onFinished errors
+  add: (file, callback) =>
+    @progress += 1
+    @log "(#{@progress}/#{@total}) #{'+'.green} #{path.relative CWD, file}"
+    @upload file, callback
 
-  list: (callback) ->
-    @s3.listObjects Bucket: @bucket, Prefix: @prefix, (error, data) =>
-      callback error if error?
+  update: (file, callback) =>
+    @progress += 1
+    @log "(#{@progress}/#{@total}) #{'Δ'.yellow} #{path.relative CWD, file}"
+    @upload file, callback
 
-      objects = data.Contents
-      return callback null, [] unless objects?
-      objects = [objects] unless objects instanceof Array
-
-      files = {}
-      files[o.Key] = new Date o.LastModified for o in objects
-      callback error, files
-
-  preUpload: (file, callback) ->
-    extension = path.extname file
+  maybeZip: (file, callback) ->
+    shouldZip = (true for expression in @gzip when expression.test file).length > 0
     content = fs.readFileSync path.resolve @local, file
 
-    if extension in @gzip
-      zlib.gzip content, callback
+    if shouldZip
+      zlib.gzip content, (error, content) ->
+        callback error, content, true
     else
-      callback null, fs.readFileSync path.resolve @local, file
+      callback null, content, false
 
   upload: (file, callback) ->
-    extension = path.extname file
+    shouldntCache = (true for expression in @dontCache when expression.test file).length > 0
 
-    @preUpload file, (error, content) =>
+    @maybeZip file, (error, content, isZipped) =>
       if @options['dry-run']
         callback()
       else
         @s3.putObject
           Bucket: @bucket
           Key: path.join @prefix, file
+          Body: content
           ContentLength: content.length
           ContentType: mime.lookup file
-          ContentEncoding: if extension in @gzip then 'gzip' else ''
-          Body: content
+          ContentEncoding: if isZipped then 'gzip' else ''
+          CacheControl: if shouldntCache then 'no-cache, must-revalidate' else ''
           ACL: 'public-read'
           callback
 
-  add: (file, callback) =>
-    @progress += 1
-    console.log "#{'+'.green} #{path.resolve process.cwd(), file} (#{@progress}/#{@total})"
-    @upload arguments...
-
-  update: (file, callback) =>
-    @progress += 1
-    console.log "#{'Δ'.yellow} #{path.resolve process.cwd(), file} (#{@progress}/#{@total})"
-    @upload arguments...
-
   remove: (file, callback) =>
     @progress += 1
-    console.log "#{'×'.red} #{file} (#{@progress}/#{@total})"
+    @log "(#{@progress}/#{@total}) #{'×'.red} #{file}"
 
     if @options['dry-run']
       callback()
@@ -166,15 +187,14 @@ class Publisher
         Key: file
         callback
 
-  onFinished: (errors) =>
+  finishUp: (errors) =>
     if errors.length is 0
-      console.log 'Finished with no errors.'.green
+      @log 'Finished with no errors.'.green
     else
-      errorLog = "publisssh-error-log.txt"
-      console.error "Finished with #{errors.length} errors.".red
-      TODO: console.error "Logging errors to #{errorLog}.".red
-      fs.writeFileSync errorLog, "#{errors.join '\n'}\n"
+      @log "Finished with #{errors.length} errors.".red
+      @log "Logging errors to #{ERROR_LOG}.".red
+      fs.writeFileSync ERROR_LOG, "#{JSON.stringify errors}\n"
 
-    console.log 'This was a dry run. No changes have been made remotely.' if @options['dry-run']
+    @log 'This was a dry run. No changes have been made remotely.' if @options['dry-run']
 
 module.exports = Publisher
