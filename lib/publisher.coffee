@@ -103,10 +103,8 @@ class Publisher
         if md5 is remoteFiles[prefixed]
           toSkip.push localFile
         else
-          console.log 'Up', prefixed
           toUpdate.push localFile
       else
-        console.log 'Add', prefixed
         toAdd.push localFile
 
     if @options.remove
@@ -114,7 +112,6 @@ class Publisher
         remoteAsLocal = remoteFile[((@prefix.length || -1) + 1)...]
         continue if remoteAsLocal in localFiles
         continue if @options.ignore?.test remoteFile
-        console.log {remove: remoteFile}
         toRemove.push remoteFile
 
     thePlan = []
