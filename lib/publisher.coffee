@@ -87,11 +87,16 @@ class Publisher
     toSkip = []
     toRemove = []
 
-    for localFile in localFiles
+    for localFile, i in localFiles
+      continue if @options.ignore?.test localFile
+
       prefixed = path.join (@prefix || ''), localFile
       localFile = path.resolve @local, localFile
 
-      continue if isDir localFile
+      if isDir localFile
+        # S3 return directories with a trailing slash.
+        localFiles[i] = (path.relative @local, localFile) + path.sep
+        continue
 
       if prefixed of remoteFiles
         md5 = crypto.createHash('md5').update(fs.readFileSync localFile).digest 'hex'
@@ -106,8 +111,11 @@ class Publisher
 
     if @options.remove
       for remoteFile of remoteFiles
-        continue if @options.ignore?.test file
-        toRemove.push remoteFile unless file[(@prefix.length + 1)...] in localFiles
+        remoteAsLocal = remoteFile[((@prefix.length || -1) + 1)...]
+        continue if remoteAsLocal in localFiles
+        continue if @options.ignore?.test remoteFile
+        console.log {remove: remoteFile}
+        toRemove.push remoteFile
 
     thePlan = []
     thePlan.push "adding #{toAdd.length}" unless toAdd.length is 0
