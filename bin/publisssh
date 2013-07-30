@@ -6,8 +6,10 @@ cwd = process.cwd()
 
 options = optimist.usage('''
   Usage:
-    publisssh some/source some-bucket/some/destination -fr
+    publisssh some/source some-bucket/some/destination -dr
 ''').options({
+  b: alias: 'bucket', description: 'Destination bucket'
+  p: alias: 'prefix', description: 'Destination prefix'
   r: alias: 'remove', description: 'Delete remote files that don\'t exist locally'
   d: alias: 'dry-run', description: 'Don\'t change anything remotely.'
   k: alias: 'key', description: 'AWS access key ID'
@@ -44,8 +46,8 @@ else
   [bucketFromRemote, prefixesFromRemote...] = remote.split path.sep
   prefixFromRemote = prefixesFromRemote.join path.sep
 
-  bucket = options.bucket || bucketFromRemote
-  prefix = options.prefix || prefixFromRemote
+  bucket = (options.bucket || bucketFromRemote).replace /^\/|\/$/g, ''
+  prefix = (options.prefix || prefixFromRemote).replace /^\/|\/$/g, ''
 
   publisher = new Publisher {local, bucket, prefix, options}
   publisher.publish()
