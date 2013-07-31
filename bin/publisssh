@@ -2,22 +2,26 @@
 
 optimist = require 'optimist'
 
-cwd = process.cwd()
+CWD = process.cwd()
+DEFAULT_CONFIG = 'publisssh'
 
 options = optimist.usage('''
   Usage:
-    publisssh some/source some-bucket/some/destination -dr
+    publisssh ./local bucket/destination -dr
 ''').options({
-  b: alias: 'bucket', description: 'Destination bucket'
-  p: alias: 'prefix', description: 'Destination prefix'
+  c: alias: 'config', description: 'Configuration file (overridden by options)', default: "#{DEFAULT_CONFIG}.json"
+
+  k: alias: 'key', description: 'AWS access key ID', default: 'AMAZON_ACCESS_KEY_ID'
+  s: alias: 'secret', description: 'AWS secret access key', default: 'AMAZON_SECRET_ACCESS_KEY'
+  # b: alias: 'bucket', description: 'Destination bucket'
+  # p: alias: 'prefix', description: 'Destination prefix'
+
   r: alias: 'remove', description: 'Delete remote files that don\'t exist locally'
-  d: alias: 'dry-run', description: 'Don\'t change anything remotely.'
-  k: alias: 'key', description: 'AWS access key ID'
-  s: alias: 'secret', description: 'AWS secret access key'
-  c: alias: 'config', description: 'Configuration file'
-  h: alias: 'help', description: 'Show options'
+  i: alias: 'ignore', descriptions: 'Ignore files whose names contain this string'
+
+  h: alias: 'help', description: 'Show these options'
+  d: alias: 'dry-run', description: 'Don\'t actually change anything remotely'
   v: alias: 'version', description: 'Show the version number'
-  i: alias: 'ignore', descriptions: 'Ignore files matching this expression'
 }).argv
 
 if options.help
@@ -34,17 +38,25 @@ else
   Publisher = require '../lib/publisher'
 
   try
-    config = require path.resolve cwd, options.config || 'publisssh'
-    options[option] = value for option, value of config when not (option of options)
+    config = require path.resolve CWD, (options.config || DEFAULT_CONFIG)
 
-  # Unpack command line arguments.
-  {_: [localFromArgs, remoteFromArgs]} = options
+    if typeof config is 'function'
+      options = config.call options, options
+    else
+      options[option] = value for option, value of config when option not of options
 
-  local = path.resolve cwd, localFromArgs || options.local || cwd
-  remote = remoteFromArgs || options.remote || path.basename cwd
+  catch e
+    if 'config' of options
+      console.error "Couldn't read config file '#{options.config}'"
+      process.exit 1
+
+  {_: [[localFromArgs]..., remoteFromArgs]} = options
+
+  local = path.resolve localFromArgs || options.local || CWD
+  remote = remoteFromArgs || path.basename CWD
 
   [bucketFromRemote, prefixesFromRemote...] = remote.split path.sep
-  prefixFromRemote = prefixesFromRemote.join path.sep
+  prefixFromRemote = prefixesFromRemote.join '/'
 
   bucket = (options.bucket || bucketFromRemote).replace /^\/|\/$/g, ''
   prefix = (options.prefix || prefixFromRemote).replace /^\/|\/$/g, ''
