@@ -56,7 +56,7 @@ else
   remote = remoteFromArgs || path.basename CWD
 
   [bucketFromRemote, prefixesFromRemote...] = remote.split path.sep
-  prefixFromRemote = prefixesFromRemote.join '/'
+  prefixFromRemote = prefixesFromRemote.join path.sep
 
   bucket = (options.bucket || bucketFromRemote).replace /^\/|\/$/g, ''
   prefix = (options.prefix || prefixFromRemote).replace /^\/|\/$/g, ''
