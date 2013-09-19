@@ -9,10 +9,10 @@ options = optimist.usage('''
   Usage:
     publisssh ./local bucket/destination -dr
 ''').options({
-  c: alias: 'config', description: 'Configuration file (overridden by options)', default: "#{DEFAULT_CONFIG}.json"
+  c: alias: 'config', description: 'Configuration file (overridden by options)'
 
-  k: alias: 'key', description: 'AWS access key ID', default: 'AMAZON_ACCESS_KEY_ID'
-  s: alias: 'secret', description: 'AWS secret access key', default: 'AMAZON_SECRET_ACCESS_KEY'
+  k: alias: 'key', description: 'AWS access key ID'
+  s: alias: 'secret', description: 'AWS secret access key'
   # b: alias: 'bucket', description: 'Destination bucket'
   # p: alias: 'prefix', description: 'Destination prefix'
 
