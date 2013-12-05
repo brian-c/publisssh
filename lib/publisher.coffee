@@ -30,8 +30,11 @@ class Publisher
   constructor: (options = {}) ->
     @[property] = value for property, value of options when property of @
 
-    AWS.config.update accessKeyId: @options.key if 'key' of options
-    AWS.config.update secretAccessKey: @options.secret if 'secret' of options
+    if 'key' of @options and 'secret' of @options
+      AWS.config.update
+        accessKeyId: @options.key
+        secretAccessKey: @options.secret
+
     @s3 = new AWS.S3
 
   publish: ->
