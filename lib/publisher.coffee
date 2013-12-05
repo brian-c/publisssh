@@ -12,7 +12,7 @@ class Publisher
   local: ''
   bucket: ''
   prefix: ''
-  options: null
+  options: null # key, secret, quiet, verbose, remove, ignore, dry-run
 
   dontCache: [/\.html$/]
   gzip: [/\.css$/, /\.js$/]
@@ -27,83 +27,103 @@ class Publisher
   progress: 0
   total: 0
 
-  constructor: (options = {}) ->
-    @[property] = value for property, value of options when property of @
+  constructor: (params = {}) ->
+    @[property] = value for property, value of params
 
     if 'key' of @options and 'secret' of @options
+      @detail "Using key #{@options.key} and secret #{@options.secret}"
+
       AWS.config.update
         accessKeyId: @options.key
         secretAccessKey: @options.secret
 
     @s3 = new AWS.S3
 
+  log: (args...) ->
+    if typeof args[args.length - 1] is 'boolean'
+      suppressLineBreak = args.pop()
+
+    args.push '\n' unless suppressLineBreak
+
+    process.stdout.write args.join(' ') unless @options.quiet
+
+  detail: ->
+    @log '>', arguments... if @options.verbose
+
   publish: ->
-    console.log """
+    @log """
       Local: .#{path.sep}#{path.relative process.cwd(), @local}
       Bucket: #{@bucket}
       Prefix: #{@prefix || '(root)'}
     """
 
     fs.stat @local, (error, data) =>
-      if error?
-        console.error colors.red "#{@local} doesn't exist."
-        process.exit 1
+      throw error if error?
 
-      else if data.isDirectory()
+      if data.isDirectory()
         @publishDir()
-
       else
-        console.log 'TODO: publish individual files'
-        process.exit 1
+        throw 'TODO: Publish individual files'
 
   publishDir: ->
     async.parallel [
       => @getLocalFiles arguments...
       => @getRemoteFiles arguments...
     ], (error, [localFiles, remoteFiles]) =>
+      throw error if error?
+      @detail 'Got local and remote files'
       @separateFiles localFiles, remoteFiles, (error, toAdd, toUpdate, toSkip, toRemove) =>
+        throw error if error?
+        @detail 'Separated files'
         @printThePlan toAdd, toUpdate, toSkip, toRemove, (error) =>
+          throw error if error?
+          @detail 'Printed the plan'
           @progress = 0
           @total = toAdd.length + toUpdate.length + toRemove.length
           async.series [
             => async.each toAdd, ((file, fileCallback) => @add file, localFiles[file], fileCallback), arguments...
             => async.each toUpdate, ((file, fileCallback) => @update file, localFiles[file], fileCallback), arguments...
             => async.each toRemove, ((file, fileCallback) => @remove file, fileCallback), arguments...
-          ], =>
+          ], (error) =>
+            throw error if error?
+            @detail 'Added, updated, and removed appropriate files'
             @finishUp arguments...
 
   getLocalFiles: (callback) ->
-    # console.log '>>> getLocalFiles'
+    @detail 'Getting local files'
     @localFiles = {}
 
     wrench.readdirRecursive @local, (error, currentFiles) =>
-      callback error if error?
+      throw error if error?
 
       if currentFiles?
+        @detail 'Reading local files...'
         @localFiles[file] = null for file in currentFiles
       else
-        callback error, @localFiles
+        @detail '...read local files'
+        callback null, @localFiles
 
   getRemoteFiles: (callback) ->
-    # console.log '>>> getRemoteFiles'
+    @detail 'Getting remote files'
     @remoteFiles = {}
 
     @s3.listObjects
       Bucket: @bucket
       Prefix: @prefix
       (error, {Contents, IsTruncated}) =>
-        callback error if error?
+        throw error if error?
+        @detail 'Got remote files'
 
         for object in Contents
           @remoteFiles[object.Key[(@prefix.length || -1) + 1...]] = hash: object.ETag[1...-1]
 
         if IsTruncated
-          console.log colors.yellow "Warning: Remote file list truncated"
+          @log colors.yellow 'Warning: Remote file list truncated'
 
-        callback error, @remoteFiles
+        callback null, @remoteFiles
 
   separateFiles: (localFiles, remoteFiles, callback) ->
-    # console.log '>>> separateFiles'
+    @detail 'Separating files'
     toAdd = []
     toUpdate = []
     toSkip = []
@@ -175,7 +195,6 @@ class Publisher
         callback null, {hash, content, mimeType, gzip}
 
   printThePlan: (toAdd, toUpdate, toSkip, toRemove, callback) ->
-    # console.log '>>> printThePlan'
     thePlan = []
     thePlan.push "adding #{toAdd.length}" unless toAdd.length is 0
     thePlan.push "updating #{toUpdate.length}" unless toUpdate.length is 0
@@ -184,21 +203,21 @@ class Publisher
     thePlan = thePlan.join ', '
     thePlan = thePlan.charAt(0).toUpperCase() + thePlan[1...]
 
-    process.stdout.write thePlan
-    setTimeout (=> process.stdout.write '.'), (@delay / 4) * 1
-    setTimeout (=> process.stdout.write '.'), (@delay / 4) * 2
-    setTimeout (=> process.stdout.write '.\n'), (@delay / 4) * 3
+    @log thePlan, true
+    setTimeout (=> @log '.', true), (@delay / 4) * 1
+    setTimeout (=> @log '.', true), (@delay / 4) * 2
+    setTimeout (=> @log '.', false), (@delay / 4) * 3
 
     setTimeout (=> callback null, toAdd, toUpdate, toSkip, toRemove), @delay
 
   add: (file, fileInfo, callback) =>
     @progress += 1
-    console.log "(#{@progress}/#{@total}) #{colors.green '+'} #{file}"
+    @log "(#{@progress}/#{@total}) #{colors.green '+'} #{file}"
     @upload arguments...
 
   update: (file, fileInfo, callback) =>
     @progress += 1
-    console.log "(#{@progress}/#{@total}) #{colors.yellow 'Δ'} #{file}"
+    @log "(#{@progress}/#{@total}) #{colors.yellow 'Δ'} #{file}"
     @upload arguments...
 
   upload: (file, fileInfo, callback) ->
@@ -220,7 +239,7 @@ class Publisher
 
   remove: (file, callback) =>
     @progress += 1
-    console.log "(#{@progress}/#{@total}) #{colors.red '×'} #{file}"
+    @log "(#{@progress}/#{@total}) #{colors.red '×'} #{file}"
 
     if @options['dry-run']
       callback()
@@ -231,7 +250,8 @@ class Publisher
         callback
 
   finishUp: =>
-    console.log colors.green 'Finished.'
-    console.log 'This was a dry run. No changes have been made remotely.' if @options['dry-run']
+    @detail 'Finishing up'
+    @log colors.green 'Finished.'
+    @log 'This was a dry run. No changes have been made remotely.' if @options['dry-run']
 
 module.exports = Publisher
