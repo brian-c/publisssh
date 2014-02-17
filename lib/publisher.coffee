@@ -15,7 +15,7 @@ class Publisher
   options: null # key, secret, quiet, verbose, remove, ignore, dry-run
 
   dontCache: [/\.html$/]
-  gzip: [/\.css$/, /\.js$/]
+  gzip: [/\.html$/, /\.css$/, /\.js$/, /\.csv$/]
 
   delay: 3000
 
