@@ -14,6 +14,7 @@ class Publisher
   prefix: ''
   options: null # key, secret, quiet, verbose, remove, ignore, dry-run
 
+  cacheFor: 5 * 60
   dontCache: [/\.html$/]
   gzip: [/\.html$/, /\.css$/, /\.js$/, /\.[c|t]sv$/]
 
@@ -233,7 +234,7 @@ class Publisher
         ContentLength: fileInfo.content.length
         ContentType: fileInfo.mimeType
         ContentEncoding: if fileInfo.gzip then 'gzip' else ''
-        CacheControl: if shouldntCache then 'no-cache, must-revalidate' else ''
+        CacheControl: if shouldntCache then 'no-cache, must-revalidate' else "max-age = #{@cacheFor}"
         ACL: 'public-read'
         callback
 
