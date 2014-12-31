@@ -1,14 +1,14 @@
 optimist = require 'optimist'
+pkg = require '../package'
+path = require 'path'
+publish = require './publish'
 
-CWD = process.cwd()
-DEFAULT_CONFIG = 'publisssh'
+LEADING_OR_TRAILING_SLASH = /^[/]|[/]$/g
 
-options = optimist.usage('''
+flags = optimist.usage('''
   Usage:
     publisssh ./local bucket/destination -dr
 ''').options({
-  c: alias: 'config', description: 'Configuration file (overridden by options)'
-
   k: alias: 'key', description: 'AWS access key ID'
   s: alias: 'secret', description: 'AWS secret access key'
 
@@ -19,45 +19,29 @@ options = optimist.usage('''
   q: alias: 'quiet', description: 'Don\'t log anything'
   V: alias: 'verbose', description: 'Log extra debugging information'
 
-  h: alias: 'help', description: 'Show these options'
+  h: alias: 'help', description: 'Show these flags'
   v: alias: 'version', description: 'Show the version number'
 }).argv
 
-if options.help
+if flags.help or flags._.length is 0
   optimist.showHelp()
-  process.exit 0
 
-else if options.version
-  {version} = require '../package'
-  console.log version
-  process.exit 0
+else if flags.version
+  console.log pkg.version
 
 else
-  path = require 'path'
+  {_: [[local]..., remote]} = flags
+  local ?= process.cwd()
 
-  try
-    config = require path.resolve CWD, (options.config || DEFAULT_CONFIG)
+  [bucket, prefixes...] = remote.split path.sep
+  prefix = prefixes.join path.sep
+  bucket = bucket.replace LEADING_OR_TRAILING_SLASH, ''
+  prefix = prefix.replace LEADING_OR_TRAILING_SLASH, ''
 
-    if typeof config is 'function'
-      options = config.call options, options
-    else
-      options[option] = value for option, value of config when option not of options
+  options = {}
+  for flag, value of flags when flag.length > 1 and flag.charAt(0).match /[a-z]/i
+    optionName = flag.replace /-([a-z])/g, (match, char) ->
+      char.toUpperCase()
+    options[optionName] = value
 
-  catch e
-    if 'config' of options
-      throw "Couldn't read config file '#{options.config}'"
-
-  {_: [[localFromArgs]..., remoteFromArgs]} = options
-
-  local = path.resolve localFromArgs || options.local || CWD
-  remote = remoteFromArgs || path.basename CWD
-
-  [bucketFromRemote, prefixesFromRemote...] = remote.split path.sep
-  prefixFromRemote = prefixesFromRemote.join path.sep
-
-  bucket = (options.bucket || bucketFromRemote).replace /^\/|\/$/g, ''
-  prefix = (options.prefix || prefixFromRemote).replace /^\/|\/$/g, ''
-
-  Publisher = require '../lib/publisher'
-  publisher = new Publisher {local, bucket, prefix, options}
-  publisher.publish()
+  publish local, bucket, prefix, options
