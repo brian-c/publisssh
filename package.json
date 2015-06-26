@@ -5,7 +5,7 @@
     "publisssh": "./bin/publisssh"
   },
   "dependencies": {
-    "aws-sdk": "^2.1.4",
+    "aws-sdk": "~2.1.36",
     "chalk": "^0.5.1",
     "iced-coffee-script": "^1.8.0-c",
     "mime": "^1.2.11",
