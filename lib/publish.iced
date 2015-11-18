@@ -90,17 +90,20 @@ class Publisher
     for name in add
       i += 1
       @info chalk.gray("#{i}/#{total} "), true
-      await @addFile bucket, prefix, name, localFiles[name], defer()
+      await @addFile bucket, prefix, name, localFiles[name], defer error
+      throw error if error?
 
     for name in replace
       i += 1
       @info chalk.gray("#{i}/#{total} "), true
-      await @replaceFile bucket, prefix, name, localFiles[name], defer()
+      await @replaceFile bucket, prefix, name, localFiles[name], defer error
+      throw error if error?
 
     for name in remove
       i += 1
       @info chalk.gray("#{i}/#{total} "), true
-      await @removeFile bucket, prefix, name, defer()
+      await @removeFile bucket, prefix, name, defer error
+      throw error if error?
 
     @info chalk.green "Finished in #{process.uptime()} seconds"
 
