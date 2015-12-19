@@ -1,5 +1,6 @@
 {
   "name": "publisssh",
+  "description": "Push a site to S3",
   "version": "1.0.1",
   "bin": {
     "publisssh": "./bin/publisssh"
@@ -11,5 +12,11 @@
     "mime": "^1.2.11",
     "optimist": "^0.6.1",
     "wrench": "^1.5.8"
+  },
+  "homepage": "https://github.com/brian-c/publisssh",
+  "bugs": "https://github.com/brian-c/publisssh/issues",
+  "repository": { 
+    "type": "git", 
+    "url": "https://github.com/brian-c/publisssh.git"
   }
 }
