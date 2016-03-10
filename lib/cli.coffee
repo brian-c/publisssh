@@ -12,6 +12,7 @@ flags = optimist.usage('''
   k: alias: 'key', description: 'AWS access key ID'
   s: alias: 'secret', description: 'AWS secret access key'
 
+  f: alias: 'force', description: 'Push everything up without checking'
   r: alias: 'remove', description: 'Delete remote files that don\'t exist locally'
   i: alias: 'ignore', description: 'Ignore files whose names contain this string'
   d: alias: 'dry-run', description: 'Don\'t actually change anything remotely'
@@ -23,11 +24,11 @@ flags = optimist.usage('''
   v: alias: 'version', description: 'Show the version number'
 }).argv
 
-if flags.help or flags._.length is 0
-  optimist.showHelp()
-
-else if flags.version
+if flags.version
   console.log pkg.version
+
+else if flags.help or flags._.length is 0
+  optimist.showHelp()
 
 else
   {_: [[local]..., remote]} = flags
