@@ -12,6 +12,7 @@ class Publisher
   key: process.env.AMAZON_ACCESS_KEY_ID
   secret: process.env.AMAZON_SECRET_ACCESS_KEY
 
+  force: false
   remove: false
 
   ignore: [
@@ -111,6 +112,11 @@ class Publisher
       @info chalk.yellow 'This was a dry run. No changes have been made remotely.'
 
   getRemoteFiles: (bucket, prefix, callback, files = {}, marker) ->
+    if @force
+      @log 'Force-publishing without checking remote files'
+      callback []
+      return
+
     @log 'Getting remote files', bucket, prefix, Object.keys(files).length
 
     @s3.listObjects
